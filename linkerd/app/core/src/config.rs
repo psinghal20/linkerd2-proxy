@@ -26,6 +26,7 @@ pub struct ProxyConfig {
     pub connect: ConnectConfig,
     pub buffer_capacity: usize,
     pub cache_max_idle_age: Duration,
+    pub cache_max_idle_jitter: Duration,
     pub disable_protocol_detection_for_ports: Arc<IndexSet<u16>>,
     pub dispatch_timeout: Duration,
     pub max_in_flight_requests: usize,

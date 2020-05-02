@@ -1,17 +1,23 @@
 use crate::error::HumanDuration;
 use futures::{future, Future, Poll};
 use linkerd2_error::Error;
+use rand::{rngs::SmallRng, RngCore, SeedableRng};
 use std::time::{Duration, Instant};
 use tokio_timer::Delay;
 
-#[derive(Copy, Clone, Debug)]
-pub struct IdleLayer(Duration);
+#[derive(Clone, Debug)]
+pub struct IdleLayer {
+    timeout: Duration,
+    jitter: Duration,
+    rng: SmallRng,
+}
 
 #[derive(Debug)]
 pub struct Idle<S> {
     inner: S,
     idle: Delay,
-    timeout: Duration,
+    current: Duration,
+    config: IdleLayer,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -20,8 +26,17 @@ pub struct IdleError(Duration);
 // === impl IdleLayer ===
 
 impl IdleLayer {
-    pub fn new(timeout: Duration) -> Self {
-        IdleLayer(timeout)
+    pub fn new(timeout: Duration, jitter: Duration) -> Self {
+        let rng = SmallRng::from_entropy();
+        Self {
+            timeout,
+            jitter,
+            rng,
+        }
+    }
+
+    fn next_timeout(&mut self) -> Duration {
+        Duration::from_millis(self.rng.next_u64() % self.jitter.as_millis() as u64)
     }
 }
 
@@ -29,10 +44,13 @@ impl<S> tower::layer::Layer<S> for IdleLayer {
     type Service = Idle<S>;
 
     fn layer(&self, inner: S) -> Self::Service {
+        let mut config = self.clone();
+        let current = config.next_timeout();
         Self::Service {
             inner,
-            timeout: self.0,
-            idle: Delay::new(Instant::now() + self.0),
+            idle: Delay::new(Instant::now() + current),
+            current,
+            config,
         }
     }
 }
@@ -50,14 +68,14 @@ where
 
     fn poll_ready(&mut self) -> Poll<(), Self::Error> {
         if self.idle.poll().expect("timer must succeed").is_ready() {
-            return Err(IdleError(self.timeout).into());
+            return Err(IdleError(self.current).into());
         }
 
         self.inner.poll_ready().map_err(Into::into)
     }
 
     fn call(&mut self, req: T) -> Self::Future {
-        self.idle.reset(Instant::now() + self.timeout);
+        self.idle.reset(Instant::now() + self.config.next_timeout());
         self.inner.call(req).map_err(Into::into)
     }
 }

@@ -9,6 +9,7 @@ publish = false
 futures = "0.1"
 linkerd2-error = { path = "../error" }
 linkerd2-stack = { path = "../stack" }
+rand = { version = "0.7", features = ["small_rng"] }
 tokio-connect = { git = "https://github.com/carllerche/tokio-connect" }
 tokio-timer = "0.2.4"
 tower = "0.1"

@@ -79,6 +79,7 @@ const ENV_OUTBOUND_CONNECT_KEEPALIVE: &str = "LINKERD2_PROXY_OUTBOUND_CONNECT_KE
 
 pub const ENV_BUFFER_CAPACITY: &str = "LINKERD2_PROXY_BUFFER_CAPACITY";
 
+pub const ENV_ROUTER_MAX_IDLE_JITTER: &str = "LINKERD2_PROXY_ROUTER_MAX_IDLE_JITTER";
 pub const ENV_INBOUND_ROUTER_MAX_IDLE_AGE: &str = "LINKERD2_PROXY_INBOUND_ROUTER_MAX_IDLE_AGE";
 pub const ENV_OUTBOUND_ROUTER_MAX_IDLE_AGE: &str = "LINKERD2_PROXY_OUTBOUND_ROUTER_MAX_IDLE_AGE";
 
@@ -203,8 +204,9 @@ const DEFAULT_INITIAL_CONNECTION_WINDOW_SIZE: u32 = 1048576; // 1MB ~ 16 streams
 // crate does not support cgroups yet [seanmonstar/num_cpus#80].
 const DEFAULT_BUFFER_CAPACITY: usize = 10;
 
-const DEFAULT_INBOUND_ROUTER_MAX_IDLE_AGE: Duration = Duration::from_secs(60);
-const DEFAULT_OUTBOUND_ROUTER_MAX_IDLE_AGE: Duration = Duration::from_secs(60);
+const DEFAULT_INBOUND_ROUTER_MAX_IDLE_AGE: Duration = Duration::from_secs(60 * 2);
+const DEFAULT_OUTBOUND_ROUTER_MAX_IDLE_AGE: Duration = Duration::from_secs(60 * 10);
+const DEFAULT_ROUTER_MAX_IDLE_JITTER: Duration = Duration::from_secs(10);
 
 // 10_000 is arbitrarily chosen for now...
 const DEFAULT_INBOUND_MAX_IN_FLIGHT: usize = 10_000;
@@ -272,6 +274,7 @@ pub fn parse_config<S: Strings>(strings: &S) -> Result<super::Config, EnvError> 
         parse(strings, ENV_INBOUND_ROUTER_MAX_IDLE_AGE, parse_duration);
     let outbound_cache_max_idle_age =
         parse(strings, ENV_OUTBOUND_ROUTER_MAX_IDLE_AGE, parse_duration);
+    let cache_max_idle_jitter = parse(strings, ENV_ROUTER_MAX_IDLE_JITTER, parse_duration);
 
     let inbound_max_in_flight = parse(strings, ENV_INBOUND_MAX_IN_FLIGHT, parse_number);
     let outbound_max_in_flight = parse(strings, ENV_OUTBOUND_MAX_IN_FLIGHT, parse_number);
@@ -362,6 +365,8 @@ pub fn parse_config<S: Strings>(strings: &S) -> Result<super::Config, EnvError> 
     let (inbound_orig_dst, outbound_orig_dst): (DefaultOrigDstAddr, DefaultOrigDstAddr) =
         Default::default();
 
+    let cache_max_idle_jitter = cache_max_idle_jitter?.unwrap_or(DEFAULT_ROUTER_MAX_IDLE_JITTER);
+
     let outbound = {
         let bind = listen::Bind::new(
             outbound_listener_addr?
@@ -397,6 +402,7 @@ pub fn parse_config<S: Strings>(strings: &S) -> Result<super::Config, EnvError> 
                     .into(),
                 cache_max_idle_age: outbound_cache_max_idle_age?
                     .unwrap_or(DEFAULT_OUTBOUND_ROUTER_MAX_IDLE_AGE),
+                cache_max_idle_jitter,
                 buffer_capacity,
                 dispatch_timeout,
                 max_in_flight_requests: outbound_max_in_flight?
@@ -439,6 +445,7 @@ pub fn parse_config<S: Strings>(strings: &S) -> Result<super::Config, EnvError> 
                     .into(),
                 cache_max_idle_age: inbound_cache_max_idle_age?
                     .unwrap_or(DEFAULT_INBOUND_ROUTER_MAX_IDLE_AGE),
+                cache_max_idle_jitter,
                 buffer_capacity,
                 dispatch_timeout,
                 max_in_flight_requests: inbound_max_in_flight?

@@ -86,8 +86,12 @@ impl<L> Layers<L> {
     }
 
     // Fails the inner service after it has not been polled for the given timeout.
-    pub fn push_idle_timeout(self, timeout: Duration) -> Layers<Pair<L, timeout::IdleLayer>> {
-        self.push(timeout::IdleLayer::new(timeout))
+    pub fn push_idle_timeout(
+        self,
+        timeout: Duration,
+        jitter: Duration,
+    ) -> Layers<Pair<L, timeout::IdleLayer>> {
+        self.push(timeout::IdleLayer::new(timeout, jitter))
     }
 
     // Makes the service eagerly process and fail requests after the given timeout.
@@ -223,8 +227,8 @@ impl<S> Stack<S> {
     }
 
     // Fails the inner service after it has not been polled for the given timeout.
-    pub fn push_idle_timeout(self, timeout: Duration) -> Stack<timeout::Idle<S>> {
-        self.push(timeout::IdleLayer::new(timeout))
+    pub fn push_idle_timeout(self, timeout: Duration, jitter: Duration) -> Stack<timeout::Idle<S>> {
+        self.push(timeout::IdleLayer::new(timeout, jitter))
     }
 
     // Makes the service eagerly process and fail requests after the given timeout.

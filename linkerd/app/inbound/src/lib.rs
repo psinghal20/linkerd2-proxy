@@ -73,6 +73,7 @@ impl Config {
                     connect,
                     buffer_capacity,
                     cache_max_idle_age,
+                    cache_max_idle_jitter,
                     disable_protocol_detection_for_ports,
                     dispatch_timeout,
                     max_in_flight_requests,
@@ -113,7 +114,7 @@ impl Config {
                     svc::layers()
                         // If the service has been ready & unused for `cache_max_idle_age`,
                         // fail it.
-                        .push_idle_timeout(cache_max_idle_age)
+                        .push_idle_timeout(cache_max_idle_age, cache_max_idle_jitter)
                         // If the service has been unavailable for an extend time, eagerly
                         // fail requests.
                         .push_failfast(dispatch_timeout)
@@ -157,7 +158,7 @@ impl Config {
                         svc::layers()
                             // If the service has been ready & unused for `cache_max_idle_age`,
                             // fail it.
-                            .push_idle_timeout(cache_max_idle_age)
+                            .push_idle_timeout(cache_max_idle_age, cache_max_idle_jitter)
                             // If the service has been unavailable for an extend time, eagerly
                             // fail requests.
                             .push_failfast(dispatch_timeout)
@@ -191,7 +192,7 @@ impl Config {
                         svc::layers()
                             // If the service has been ready & unused for `cache_max_idle_age`,
                             // fail it.
-                            .push_idle_timeout(cache_max_idle_age)
+                            .push_idle_timeout(cache_max_idle_age, cache_max_idle_jitter)
                             // If the service has been unavailable for an extend time, eagerly
                             // fail requests.
                             .push_failfast(dispatch_timeout)
