@@ -18,8 +18,14 @@ use linkerd2_app_core::{
     opencensus::proto::trace::v1 as oc,
     profiles,
     proxy::{
-        self, core::resolve::Resolve, core::Listen, detect::DetectProtocolLayer, discover, http,
-        identity, resolve::map_endpoint, server::ProtocolDetect, tap, tcp, Server,
+        self,
+        core::listen::{Bind, Listen},
+        core::resolve::Resolve,
+        detect::DetectProtocolLayer,
+        discover, http, identity,
+        resolve::map_endpoint,
+        server::ProtocolDetect,
+        tap, tcp, Server,
     },
     reconnect, retry, router, serve,
     spans::SpanConverter,
@@ -83,7 +89,7 @@ impl Config {
         P: profiles::GetRoutes<Profile> + Clone + Send + 'static,
         P::Future: Send,
     {
-        let listen = self.bind()?;
+        let listen = self.proxy.server.bind.bind().map_err(Error::from)?;
         let prevent_loop = PreventLoop::new(listen.listen_addr().port());
         let tcp_connect = self.build_tcp_connect(local_identity, &metrics);
         let http = self.build_http_logical_router(
@@ -106,11 +112,6 @@ impl Config {
             drain,
         );
         Ok(server)
-    }
-
-    pub fn bind(&self) -> Result<transport::Listen<transport::DefaultOrigDstAddr>, Error> {
-        use proxy::core::listen::Bind;
-        self.proxy.server.bind.bind().map_err(Error::from)
     }
 
     pub fn build_tcp_connect(
