@@ -289,31 +289,33 @@ impl Config {
         // This is effectively the same as the endpoint stack; but the client layer captures the
         // requst body type (via PhantomData), so the stack cannot be shared directly.
         let http_forward_cache = http_endpoint
-        .check_make_service::<Target<HttpEndpoint>, http::Request<http::boxed::Payload>>()
-        .into_new_service()
-        .cache(
-            svc::layers()
-                .push_on_response(
-                    svc::layers()
-                        // If the endpoint has been unavailable for an extended time, eagerly
-                        // fail requests.
-                        .push_failfast(dispatch_timeout)
-                        // Shares the balancer, ensuring discovery errors are propagated.
-                        .push_spawn_buffer_with_idle_timeout(buffer_capacity, cache_max_idle_age)
-                        .box_http_request()
-                        .push(metrics.stack.layer(stack_labels("forward.endpoint"))),
-                ),
-        )
-        .instrument(|endpoint: &Target<HttpEndpoint>| {
-            info_span!("forward", peer.addr = %endpoint.addr, peer.id = ?endpoint.inner.identity)
-        })
-        .push_map_target(|t: Concrete<HttpEndpoint>| Target {
-            addr: t.addr.into(),
-            inner: t.inner.inner,
-        })
-        .check_service::<Concrete<HttpEndpoint>>()
-        // Ensure that buffers don't hold the cache's lock in poll_ready.
-        .push_oneshot();
+            .check_make_service::<Target<HttpEndpoint>, http::Request<http::boxed::Payload>>()
+            .into_new_service()
+            .cache(
+                svc::layers()
+                    .push_on_response(
+                        svc::layers()
+                            // If the endpoint has been unavailable for an extended time, eagerly
+                            // fail requests.
+                            .push_failfast(dispatch_timeout)
+                            // Shares the balancer, ensuring discovery errors are propagated.
+                            .push_spawn_buffer_with_idle_timeout(buffer_capacity, cache_max_idle_age)
+                            .box_http_request()
+                            .push(metrics.stack.layer(stack_labels("forward.endpoint"))),
+                    ),
+            )
+            // Avoid caching if it would loop.
+            .push(admit::AdmitLayer::new(prevent_loop))
+            .instrument(|endpoint: &Target<HttpEndpoint>| {
+                info_span!("forward", peer.addr = %endpoint.addr, peer.id = ?endpoint.inner.identity)
+            })
+            .push_map_target(|t: Concrete<HttpEndpoint>| Target {
+                addr: t.addr.into(),
+                inner: t.inner.inner,
+            })
+            .check_service::<Concrete<HttpEndpoint>>()
+            // Ensure that buffers don't hold the cache's lock in poll_ready.
+            .push_oneshot();
 
         // If the balancer fails to be created, i.e., because it is unresolvable, fall back to
         // using a router that dispatches request to the application-selected original destination.
