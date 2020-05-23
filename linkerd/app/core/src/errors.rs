@@ -26,6 +26,17 @@ pub struct LabelError(super::metric_labels::Direction);
 
 pub type Label = (super::metric_labels::Direction, Reason);
 
+#[derive(Debug, Default, Clone, Copy)]
+pub struct LoopDetected(());
+
+impl std::fmt::Display for LoopDetected {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "loop deteced",)
+    }
+}
+
+impl std::error::Error for LoopDetected {}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Reason {
     DispatchTimeout,
@@ -33,6 +44,7 @@ pub enum Reason {
     IdentityRequired,
     Io(Option<Errno>),
     FailFast,
+    LoopDetected,
     Unexpected,
 }
 
@@ -189,6 +201,8 @@ fn http_status(error: &(dyn std::error::Error + 'static)) -> StatusCode {
         http::StatusCode::SERVICE_UNAVAILABLE
     } else if error.is::<IdentityRequired>() {
         http::StatusCode::FORBIDDEN
+    } else if error.is::<LoopDetected>() {
+        http::StatusCode::LOOP_DETECTED
     } else if let Some(source) = error.source() {
         http_status(source)
     } else {
@@ -307,6 +321,8 @@ impl LabelError {
             Reason::DispatchTimeout
         } else if err.is::<IdentityRequired>() {
             Reason::IdentityRequired
+        } else if err.is::<LoopDetected>() {
+            Reason::LoopDetected
         } else if let Some(e) = err.downcast_ref::<std::io::Error>() {
             Reason::Io(e.raw_os_error().map(Errno::from))
         } else if let Some(e) = err.source() {
@@ -336,6 +352,7 @@ impl metrics::FmtLabels for Reason {
                 Reason::ResponseTimeout => "response timeout",
                 Reason::IdentityRequired => "identity required",
                 Reason::Io(_) => "i/o",
+                Reason::LoopDetected => "loop detected",
                 Reason::Unexpected => "unexpected",
             }
         )?;

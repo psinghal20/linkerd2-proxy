@@ -273,7 +273,7 @@ impl Config {
                     .push_on_response(svc::layers().box_http_response().box_http_request()),
             )
             .push(admit::AdmitLayer::new(prevent_loop))
-            .push_fallback_on_error::<prevent_loop::LoopPrevented, L>(http_loopback)
+            .push_fallback_on_error::<errors::LoopDetected, L>(http_loopback)
             .check_service::<Target>()
             .into_inner()
     }

@@ -1,15 +1,10 @@
-use super::endpoint::{Target, TcpEndpoint};
+use super::endpoint::Target;
 use futures::{future, Poll};
-use linkerd2_app_core::{admit, proxy::http};
+use linkerd2_app_core::{admit, errors, proxy::http, transport::connect};
 
 /// A connection policy that drops
 #[derive(Copy, Clone, Debug)]
 pub struct PreventLoop {
-    port: u16,
-}
-
-#[derive(Copy, Clone, Debug)]
-pub struct LoopPrevented {
     port: u16,
 }
 
@@ -21,66 +16,42 @@ impl PreventLoop {
 
 impl tower::Service<Target> for PreventLoop {
     type Response = PreventLoop;
-    type Error = LoopPrevented;
+    type Error = errors::LoopDetected;
     type Future = future::FutureResult<Self::Response, Self::Error>;
 
     fn poll_ready(&mut self) -> Poll<(), Self::Error> {
-        Err(LoopPrevented { port: self.port })
+        Err(errors::LoopDetected::default())
     }
 
     fn call(&mut self, _: Target) -> Self::Future {
-        future::err(LoopPrevented { port: self.port })
+        future::err(errors::LoopDetected::default())
     }
 }
 
 impl<B> tower::Service<http::Request<B>> for PreventLoop {
     type Response = http::Response<http::boxed::Payload>;
-    type Error = LoopPrevented;
+    type Error = errors::LoopDetected;
     type Future = future::FutureResult<Self::Response, Self::Error>;
 
     fn poll_ready(&mut self) -> Poll<(), Self::Error> {
-        Err(LoopPrevented { port: self.port })
+        Err(errors::LoopDetected::default())
     }
 
     fn call(&mut self, _: http::Request<B>) -> Self::Future {
-        future::err(LoopPrevented { port: self.port })
+        future::err(errors::LoopDetected::default())
     }
 }
 
-impl admit::Admit<Target> for PreventLoop {
-    type Error = LoopPrevented;
+impl<T: connect::ConnectAddr> admit::Admit<T> for PreventLoop {
+    type Error = errors::LoopDetected;
 
-    fn admit(&mut self, ep: &Target) -> Result<(), Self::Error> {
-        tracing::debug!(addr = %ep.addr, self.port);
-        if ep.addr.port() == self.port {
-            return Err(LoopPrevented { port: self.port });
+    fn admit(&mut self, ep: &T) -> Result<(), Self::Error> {
+        let port = ep.connect_addr().port();
+        tracing::debug!(port, self.port);
+        if port == self.port {
+            return Err(errors::LoopDetected::default());
         }
 
         Ok(())
     }
 }
-
-impl admit::Admit<TcpEndpoint> for PreventLoop {
-    type Error = LoopPrevented;
-
-    fn admit(&mut self, ep: &TcpEndpoint) -> Result<(), Self::Error> {
-        tracing::debug!(port = %ep.port, self.port);
-        if ep.port == self.port {
-            return Err(LoopPrevented { port: self.port });
-        }
-
-        Ok(())
-    }
-}
-
-impl std::fmt::Display for LoopPrevented {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "inbound requests must not target localhost:{}",
-            self.port
-        )
-    }
-}
-
-impl std::error::Error for LoopPrevented {}
