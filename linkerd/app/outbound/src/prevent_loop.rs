@@ -6,8 +6,8 @@ pub struct PreventLoop {
     port: u16,
 }
 
-impl PreventLoop {
-    pub fn new(port: u16) -> Self {
+impl From<u16> for PreventLoop {
+    fn from(port: u16) -> Self {
         Self { port }
     }
 }
